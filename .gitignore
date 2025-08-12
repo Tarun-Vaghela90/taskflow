@@ -42,6 +42,8 @@ coverage/
 
 # === Backend specific ===
 backend/node_modules/
+backend/uploads/users
+backend/uploads/tasks
 backend/dist/
 backend/build/
 
