@@ -24,9 +24,4 @@ export default function Column({ column, tasks }) {
   );
 }
 
-// const extra = (<div flex flex-1 flex-col gap-4>
-//         {tasks.map((task) => (
-//           <TaskCard key={task.id} id={task.id} title={task.title} />
-//         ))}
 
-//     </div>)

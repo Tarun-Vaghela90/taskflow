@@ -26,7 +26,7 @@ router.get("/:projectId/overview", async (req, res) => {
           as: "teamMembers",
           attributes: ["id", "fullName", "email", "profilePhoto"],
           through: { attributes: [] },
-        }
+        },
       ],
     });
 
@@ -56,6 +56,8 @@ router.get("/:projectId/overview", async (req, res) => {
         startDate: project.startDate,
         endDate: project.endDate,
         status: project.status,
+        createdAt: project.createdAt, // ✅ Added
+        updatedAt: project.updatedAt, // optional
         owner: project.owner,
         teamMembers: project.teamMembers,
       },
@@ -71,6 +73,7 @@ router.get("/:projectId/overview", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch project overview" });
   }
 });
+
 
 
  // Adjust path to your Task model

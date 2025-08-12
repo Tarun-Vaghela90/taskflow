@@ -1,6 +1,8 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Task = require('../models/taskModel');
+const Project = require('../models/projectModel');
+const User = require('../models/userModel');
 const { insertTable, updateTable, deleteTable, getAll, getById } = require('../controllers/handlerFactory');
 const { fetch_user } = require('../middlewares/fetch_user');
 const {is_Admin} = require('../middlewares/is_Admin')
@@ -11,7 +13,7 @@ const fs = require('fs');
 
 const multer = require('multer');
 const path = require('path');
-const { updateTaskStatus, getProjectTasks } = require('../controllers/taskController');
+const { updateTaskStatus, getProjectTasks, toggleTaskTimer } = require('../controllers/taskController');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -66,10 +68,81 @@ router.post('/', upload.single('attachment'), validateTaskFields, async (req, re
 
 
 router.get('/', (req, res) => getAll(res, Task));
-router.get('/:id', (req, res) => getById(res, Task, { id: req.params.id }));
+// router.get('/:id', async (req, res) => {
+//   try {
+//     const task = await Task.findOne({
+//       where: { id: req.params.id },
+//       include: [
+//         {
+//           model: Project,
+//           as: 'project',
+//           attributes: ['id', 'name'], // ✅ project name instead of just ID
+//         },
+//         {
+//           model: User, // creator (createdBy)
+//           attributes: ['id', 'fullName', 'email'],
+//           foreignKey: 'createdBy',
+//         },
+//         {
+//           model: User, // assignedTo
+//           attributes: ['id', 'fullName', 'email'],
+//           foreignKey: 'assignedTo',
+//         }
+//       ]
+//     });
+
+//     if (!task) {
+//       return res.status(404).json({ message: 'Task not found' });
+//     }
+
+//     res.json(task);
+//   } catch (error) {
+//     console.error('Error fetching task:', error);
+//     res.status(500).json({ message: 'Server error' });
+//   }
+// });
+
+router.get('/:id', async (req, res) => {
+  try {
+    const task = await Task.findOne({
+      where: { id: req.params.id },
+      include: [
+        {
+          model: User,
+          as: 'creator', // task creator
+          attributes: ['id', 'fullName', 'email'],
+        },
+        {
+          model: User, // assigned user
+          foreignKey: 'assignedTo',
+          attributes: ['id', 'fullName', 'email'],
+        },
+        {
+          model: Project,
+          as: 'project', // alias from your association
+          attributes: ['id', 'name'], // only fetch what you need
+        }
+      ]
+    });
+
+    if (!task) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+
+    res.json(task);
+  } catch (error) {
+    console.error('Error fetching task:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
 router.put('/:id', validateTaskFields, async (req, res) => updateTable(res, Task, req.body, { id: req.params.id }));
 router.delete('/:id', (req, res) => deleteTable(res, Task, { id: req.params.id }));
-router.patch('/:id/status',  is_Admin,updateTaskStatus);
+
+
+router.post('/task/:id/timer',  toggleTaskTimer);
+router.patch('/:id/status', updateTaskStatus);
 router.get('/projectTask/:projectId', getProjectTasks);
 
 module.exports = router;

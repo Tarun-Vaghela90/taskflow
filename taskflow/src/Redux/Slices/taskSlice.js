@@ -21,7 +21,8 @@ export const fetchtaskById = createAsyncThunk('task/fetchtaskById', async (taskI
     const token = localStorage.getItem("Token");
 
     const response = await axios.get(`${API_URL}/${taskId}`, { headers: { Token: token } });
-    return response.data.data;
+    console.log( response.data)
+    return response.data;
 });
 
 export const createtask = createAsyncThunk('task/createtask', async (formData) => {
@@ -69,10 +70,19 @@ export const updateTaskStatus = createAsyncThunk(
             );
             return response.data.data;
         } catch (error) {
-            // If API fails, revert
-            const oldTask = getState().task.tasks.find(t => t.id === taskId);
-            return rejectWithValue(oldTask);
-        }
+  console.error("Update task status error:", error);
+
+  const backendMessage =
+    error.response?.data?.message || "Failed to update task status";
+
+  const oldTask = getState().task.tasks.find(t => t.id === taskId);
+
+  return rejectWithValue({
+    message: backendMessage,
+    oldTask
+  });
+}
+
     }
 );
 
@@ -195,6 +205,7 @@ const taskSlice = createSlice({
                 }
             })
             .addCase(updateTaskStatus.rejected, (state, action) => {
+
                 // Revert if API fails
                 if (action.payload) {
                     const oldTask = action.payload;

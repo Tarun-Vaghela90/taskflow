@@ -1,8 +1,20 @@
 import React, { useEffect, useState } from "react";
-import { Card, Descriptions, Row, Col, Grid, Spin, message, Dropdown, Button } from "antd";
-import { DownOutlined, PlusOutlined } from "@ant-design/icons";
+import {
+  Card,
+  Descriptions,
+  Row,
+  Col,
+  Grid,
+  Spin,
+  message,
+  Dropdown,
+  Button,
+} from "antd";
+import { DownOutlined } from "@ant-design/icons";
 import DashboardChart from "./DashboardChart";
 import axios from "axios";
+import { jwtDecode } from "jwt-decode";
+import { useTheme } from "../../../shared/hooks/ThemeContext";
 
 const { useBreakpoint } = Grid;
 
@@ -11,7 +23,11 @@ export default function Dashboard() {
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState([]);
+  const [selectedProject, setSelectedProject] = useState(null);
 
+  const token = localStorage.getItem("Token");
+  const decoded = jwtDecode(token);
+  const { isAdmin } = useTheme();
   const getColumnCount = () => {
     if (screens.xs) return 1;
     if (screens.sm) return 2;
@@ -20,22 +36,46 @@ export default function Dashboard() {
     return 4;
   };
 
-  // Fetch project list for dropdown
+  // Fetch project list
+  // Fetch project list
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const response = await axios.get("http://localhost:3000/api/v1/projects/project");
-        console.log(response.data.data);
-        setProjects(response.data.data);
+        const response = await axios.get(
+          "http://localhost:3000/api/v1/projects/projectsData"
+        );
+
+        let allProjects = response.data.data; // API returns array of projects
+        console.log(allProjects);
+
+        // Get logged-in user info (assuming stored in localStorage)
+        const userId = decoded?.id;
+
+        let filteredProjects;
+
+        if (isAdmin) {
+          // Admin → see all projects
+          filteredProjects = allProjects;
+        } else {
+          // Normal user → only projects where they are owner or in teamMembers
+          filteredProjects = allProjects.filter(
+            (project) =>
+              project.ownerId === userId ||
+              project.teamMembers?.some((member) => member.id === userId)
+          );
+        }
+
+        setProjects(filteredProjects);
       } catch (err) {
         console.error(err);
         message.error("Failed to fetch projects");
       }
     };
+
     fetchProjects();
   }, []);
 
-  // Fetch overview for a given project
+  // Fetch overview
   const fetchOverview = async (projectId) => {
     setLoading(true);
     try {
@@ -51,33 +91,41 @@ export default function Dashboard() {
     }
   };
 
-  // Dropdown items for projects
+  // Dropdown menu
   const projectMenu = projects.map((p) => ({
     key: p.id,
     label: p.name,
-    onClick: () => fetchOverview(p.id),
+    onClick: () => {
+      setSelectedProject(p);
+      fetchOverview(p.id);
+    },
   }));
 
+  // Load first project by default
   useEffect(() => {
-    // Optionally load the first project by default
     if (projects.length > 0) {
+      setSelectedProject(projects[0]);
       fetchOverview(projects[0].id);
     }
   }, [projects]);
 
   return (
     <div style={{ padding: "16px" }}>
-      {/* Dropdown Add Button */}
+      {/* Project Selection */}
       <div style={{ marginBottom: 16 }}>
         <Dropdown menu={{ items: projectMenu }}>
-          <Button type="primary" icon={<PlusOutlined />}>
-            Add Project <DownOutlined />
+          <Button type="primary">
+            {selectedProject ? selectedProject.name : "Select Project"}{" "}
+            <DownOutlined />
           </Button>
         </Dropdown>
       </div>
 
-      {/* Charts Row */}
-      <DashboardChart />
+      {/* Charts Row - Pass selected project id */}
+      <DashboardChart
+        projectId={selectedProject?.id}
+        tasks={selectedProject?.tasks || []}
+      />
 
       {/* Info Cards Row */}
       {loading ? (
@@ -91,22 +139,46 @@ export default function Dashboard() {
                 title={overview.projectOverview.name}
                 extra={<a href="#">View</a>}
               >
-           <Descriptions
-  items={[
-    { key: "1", label: "Start Date", children: overview.projectOverview.startDate },
-    { key: "2", label: "End Date", children: overview.projectOverview.endDate },
-    { key: "3", label: "Status", children: overview.projectOverview.status },
-    { 
-      key: "4", 
-      label: "Team Members", 
-      children: Array.isArray(overview.projectOverview.teamMembers)
-        ? overview.projectOverview.teamMembers.map(m => m.fullName).join(", ")
-        : overview.projectOverview.teamMembers?.fullName || "No members"
-    },
-  ]}
-  column={getColumnCount()}
-/>
-
+                <Descriptions
+                  items={[
+                    {
+                      key: "1",
+                      label: "Created At",
+                      children: overview.projectOverview.createdAt
+                        ? new Date(overview.projectOverview.createdAt)
+                            .toISOString()
+                            .split("T")[0]
+                        : "N/A",
+                    },
+                    {
+                      key: "2",
+                      label: "Updated At",
+                      children: overview.projectOverview.updatedAt
+                        ? new Date(overview.projectOverview.updatedAt)
+                            .toISOString()
+                            .split("T")[0]
+                        : "N/A",
+                    },
+                    {
+                      key: "3",
+                      label: "Status",
+                      children: overview.projectOverview.status,
+                    },
+                    {
+                      key: "4",
+                      label: "Team Members",
+                      children: Array.isArray(
+                        overview.projectOverview.teamMembers
+                      )
+                        ? overview.projectOverview.teamMembers
+                            .map((m) => m.fullName)
+                            .join(", ")
+                        : overview.projectOverview.teamMembers?.fullName ||
+                          "No members",
+                    },
+                  ]}
+                  column={getColumnCount()}
+                />
               </Card>
             </Card>
           </Col>
@@ -120,10 +192,26 @@ export default function Dashboard() {
               >
                 <Descriptions
                   items={[
-                    { key: "1", label: "Total Tasks", children: overview.taskSummary.totalTasks },
-                    { key: "2", label: "Completed", children: overview.taskSummary.completed },
-                    { key: "3", label: "In Progress", children: overview.taskSummary.inProgress },
-                    { key: "4", label: "Overdue", children: overview.taskSummary.overdue },
+                    {
+                      key: "1",
+                      label: "Total Tasks",
+                      children: overview.taskSummary.totalTasks,
+                    },
+                    {
+                      key: "2",
+                      label: "Completed",
+                      children: overview.taskSummary.completed,
+                    },
+                    {
+                      key: "3",
+                      label: "In Progress",
+                      children: overview.taskSummary.inProgress,
+                    },
+                    {
+                      key: "4",
+                      label: "Overdue",
+                      children: overview.taskSummary.overdue,
+                    },
                   ]}
                   column={getColumnCount()}
                 />

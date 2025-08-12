@@ -84,6 +84,11 @@ Task.hasMany(Comment, {
   as: 'taskComments',
   onDelete: 'CASCADE',
 });
+Task.belongsTo(User, {
+  foreignKey: 'createdBy', // column in Task table
+  as: 'creator',           // alias for creator
+  onDelete: 'SET NULL',
+});
 Comment.belongsTo(Task, {
   foreignKey: 'taskId',
   as: 'task',

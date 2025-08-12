@@ -2,7 +2,9 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { Card, Button, Input, Form, Tabs, Modal } from "antd";
+import { Card, Button, Input, Form, Tabs, Modal, Descriptions } from "antd";
+import { useTheme } from "../../../shared/hooks/ThemeContext"; // ✅ import your hook
+
 import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as Yup from "yup";
@@ -14,7 +16,8 @@ import {
 import { toast } from "react-toastify";
 import { useHttpClient } from "../../../shared/hooks/http-hook";
 import { jwtDecode } from "jwt-decode";
-
+import { DatePicker } from "antd";
+import dayjs from "dayjs";
 const { TextArea } = Input;
 
 const editTaskSchema = Yup.object().shape({
@@ -27,6 +30,7 @@ const commentSchema = Yup.object().shape({
 });
 
 export default function TaskView() {
+   const { isAdmin , userId} = useTheme();
   const { id } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -42,7 +46,7 @@ export default function TaskView() {
   const token = localStorage.getItem("Token");
   const decoded = jwtDecode(token);
   const currentUserId = decoded.id;
-  const isAdmin = decoded.isAdmin;
+  console.log("tarun",isAdmin)
 
   // form for editing task (in modal)
   const {
@@ -52,7 +56,7 @@ export default function TaskView() {
     formState: { errors: editErrors },
   } = useForm({
     resolver: yupResolver(editTaskSchema),
-    defaultValues: { title: "", description: "" },
+    defaultValues: { title: "", description: "",dueDate: ""  },
   });
 
   // form for adding comment
@@ -92,15 +96,18 @@ export default function TaskView() {
       resetEdit({
         title: selectedtask.title || "",
         description: selectedtask.description || "",
+        dueDate: selectedtask.dueDate || ""
       });
     }
   }, [selectedtask, resetEdit]);
 
   const onSubmitEdit = (data) => {
+    console.log(data)
     dispatch(updatetask({ taskId: id, updatedData: data }))
       .unwrap()
       .then(() => {
         toast.success("Task updated successfully");
+        dispatch(fetchtaskById(id));
         setIsEditModalVisible(false);
       })
       .catch(() => toast.error("Task update failed"));
@@ -177,10 +184,7 @@ export default function TaskView() {
     }
   };
 
-  const dummyTimeLogs = [
-    { duration: "2h", createdAt: new Date().toISOString() },
-    { duration: "1.5h", createdAt: new Date().toISOString() },
-  ];
+
 
   const tabItems = [
     {
@@ -283,18 +287,7 @@ export default function TaskView() {
         </>
       ),
     },
-    {
-      key: "2",
-      label: "Time Logs",
-      children: dummyTimeLogs.map((t, i) => (
-        <Card key={i} style={{ marginBottom: 10 }}>
-          <p>Duration: {t.duration}</p>
-          <p style={{ color: "gray" }}>
-            Logged at: {new Date(t.createdAt).toLocaleString()}
-          </p>
-        </Card>
-      )),
-    },
+    
   ];
 
   if (loading || !selectedtask) return <p>Loading task...</p>;
@@ -303,30 +296,101 @@ export default function TaskView() {
     <div style={{ padding: 24 }}>
       <h2>Task View</h2>
 
-      <Card>
-        <h3>{selectedtask.title}</h3>
-        <p>{selectedtask.description}</p>
-        <p>
-          <strong>Status:</strong> {selectedtask.status}
-        </p>
-        <p>
-          <strong>Created By:</strong> {selectedtask.createdBy}
-        </p>
-        <p>
-          <strong>Project id:</strong> {selectedtask.projectId}
-        </p>
-        <p>
-          <strong>Created At:</strong>{" "}
-          {new Date(selectedtask.createdAt).toLocaleString()}
-        </p>
+      <Card style={{ marginBottom: 24 }}>
+  <Descriptions
+    title="Task Details"
+    bordered
+    column={2}
+    size="middle"
+    labelStyle={{ fontWeight: "bold", width: "30%" }}
+  >
+    <Descriptions.Item label="Title">
+      {selectedtask.title}
+    </Descriptions.Item>
 
-        <Button type="primary" onClick={() => setIsEditModalVisible(true)}>
-          Edit
-        </Button>
-        <Button danger style={{ marginLeft: 8 }} onClick={handleDelete}>
-          Delete
-        </Button>
-      </Card>
+    <Descriptions.Item label="Description">
+      {selectedtask.description}
+    </Descriptions.Item>
+
+    <Descriptions.Item label="Status">
+      <span style={{ color: selectedtask.status === "TODO" ? "orange" : "green" }}>
+        {selectedtask.status}
+      </span>
+    </Descriptions.Item>
+
+    <Descriptions.Item label="Due Date">
+      {selectedtask.dueDate
+        ? new Date(selectedtask.dueDate).toLocaleString()
+        : "Not set"}
+    </Descriptions.Item>
+
+    <Descriptions.Item label="Attachment">
+      {selectedtask.attachment ? (
+        <a href={selectedtask.attachment} target="_blank" rel="noopener noreferrer">
+          View Attachment
+        </a>
+      ) : (
+        "No attachment"
+      )}
+    </Descriptions.Item>
+
+    <Descriptions.Item label="Project">
+      {selectedtask.project?.name} (ID: {selectedtask.project?.id})
+    </Descriptions.Item>
+
+    <Descriptions.Item label="Assigned To">
+      {selectedtask.User
+        ? `${selectedtask.User.fullName} (${selectedtask.User.email})`
+        : "Unassigned"}
+    </Descriptions.Item>
+
+   <Descriptions.Item label="Created By">
+  {selectedtask.creator?.fullName
+    ? `${selectedtask.creator.fullName} (ID:${selectedtask.creator?.id})`
+    : "Unknown"}
+</Descriptions.Item>
+
+
+    <Descriptions.Item label="Started At">
+      {selectedtask.startedAt
+        ? new Date(selectedtask.startedAt).toLocaleString()
+        : "Not started"}
+    </Descriptions.Item>
+
+    <Descriptions.Item label="Stopped At">
+      {selectedtask.stoppedAt
+        ? new Date(selectedtask.stoppedAt).toLocaleString()
+        : "Not stopped"}
+    </Descriptions.Item>
+
+    <Descriptions.Item label="Elapsed Time">
+      {selectedtask.elapsedTime
+        ? `${(selectedtask.elapsedTime / 3600).toFixed(2)} hours`
+        : "0 hours"}
+    </Descriptions.Item>
+
+    <Descriptions.Item label="Created At">
+      {new Date(selectedtask.createdAt).toLocaleString()}
+    </Descriptions.Item>
+
+    <Descriptions.Item label="Updated At">
+      {new Date(selectedtask.updatedAt).toLocaleString()}
+    </Descriptions.Item>
+  </Descriptions>
+
+{isAdmin && (
+  <div style={{ marginTop: 16 }}>
+    <Button type="primary" onClick={() => setIsEditModalVisible(true)}>
+      Edit
+    </Button>
+    <Button danger style={{ marginLeft: 8 }} onClick={handleDelete}>
+      Delete
+    </Button>
+  </div>
+)}
+
+</Card>
+
 
       {/* Edit Task Modal */}
       <Modal
@@ -359,6 +423,28 @@ export default function TaskView() {
               render={({ field }) => <TextArea rows={4} {...field} />}
             />
           </Form.Item>
+
+    {(decoded?.id === selectedtask?.createdBy || isAdmin) && (
+  <Form.Item label="Due Date" validateStatus={editErrors.dueDate && "error"} help={editErrors.dueDate?.message}>
+    <Controller
+      name="dueDate"
+      control={editControl}
+      render={({ field }) => (
+        <DatePicker
+          {...field}
+          style={{ width: "100%" }}
+          format="YYYY-MM-DD"
+          value={field.value ? dayjs(field.value) : null}
+         
+          onChange={(date) => field.onChange(date ? date.toISOString() : null)}
+        />
+      )}
+    />
+  </Form.Item>
+)}
+
+    
+    
 
           <div style={{ textAlign: "right" }}>
             <Button onClick={() => setIsEditModalVisible(false)} style={{ marginRight: 8 }}>

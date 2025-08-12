@@ -5,6 +5,8 @@ import {
   updateTaskStatus,
   createtask,
 } from "../../Redux/Slices/taskSlice";
+import { DatePicker } from "antd"; // ✅ import DatePicker
+import dayjs from "dayjs";
 import { DndContext } from "@dnd-kit/core";
 import Column from "./Column";
 import { Modal, Button, Input, Select, message } from "antd";
@@ -13,6 +15,7 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
+import { useTheme } from "../../shared/hooks/ThemeContext";
 
 const COLUMN = [
   { id: "TODO", title: "To Do" },
@@ -26,13 +29,17 @@ const schema = yup.object().shape({
   description: yup.string().required("Description is required"),
   status: yup.string().required("Status is required"),
   assignedTo: yup
-    .number()
-    .typeError("Assigned user must be a number")
-    .required("Assigned user is required"),
+  .number()
+  .typeError("Assigned user must be a number")
+  .required("Assigned user is required"),
   projectId: yup
-    .number()
-    .typeError("Project ID must be a number")
-    .required("Project ID is required"),
+  .number()
+  .typeError("Project ID must be a number")
+  .required("Project ID is required"),
+  dueDate: yup
+  .date()
+  .typeError("Due date is required")
+  .required("Due date is required"),
 });
 
 export default function KanbanBoard() {
@@ -43,7 +50,8 @@ export default function KanbanBoard() {
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState(null);
-
+  
+  const {showMessage} = useTheme();
   const token = localStorage.getItem("Token");
   const decoded = token ? jwtDecode(token) : {};
   const currentUserId = decoded.id;
@@ -62,6 +70,7 @@ export default function KanbanBoard() {
       status: "TODO",
       projectId: "",
       assignedTo: "",
+      dueDate: null, 
     },
   });
   const [selectedProjectId, setSelectedProjectId] = useState(null);
@@ -127,43 +136,116 @@ export default function KanbanBoard() {
     fetchProjects();
   }, [dispatch]);
 
+  // const getVisibleTasks = () => {
+  //   if (isAdmin) {
+  //     return tasks.flatMap((project) => project.tasks || []);
+  //   }
+  //   return tasks
+  //     .filter(
+  //       (project) =>
+  //         project.ownerId === currentUserId ||
+  //         project.teamMembers?.some((m) => m.id === currentUserId)
+  //     )
+  //     .flatMap((project) => project.tasks || []);
+  // };
   const getVisibleTasks = () => {
-    if (isAdmin) {
-      return tasks.flatMap((project) => project.tasks || []);
-    }
-    return tasks
-      .filter(
+  let filteredProjects = isAdmin
+    ? tasks
+    : tasks.filter(
         (project) =>
           project.ownerId === currentUserId ||
           project.teamMembers?.some((m) => m.id === currentUserId)
-      )
-      .flatMap((project) => project.tasks || []);
-  };
+      );
+
+  return filteredProjects.flatMap((project) =>
+    (project.tasks || []).map((task) => ({
+      ...task,
+      projectName: project.name // ✅ attach project name to each task
+    }))
+  );
+};
+
 
   const visibleTasks = getVisibleTasks();
 
-  const handleDragEnd = async (event) => {
-    const { active, over } = event;
-    if (!over) return;
+  // const handleDragEnd = async (event) => {
+  //   const { active, over } = event;
+  //   if (!over) return;
 
-    const taskId = active.id;
-    const newStatus = over.id;
-    const draggedTask = visibleTasks.find(
-      (task) => task.id === parseInt(taskId)
+  //   const taskId = active.id;
+  //   const newStatus = over.id;
+  //   const draggedTask = visibleTasks.find(
+  //     (task) => task.id === parseInt(taskId)
+  //   );
+
+  //   if (draggedTask && draggedTask.status !== newStatus) {
+  //     const res = await dispatch(
+  //       updateTaskStatus({ taskId, status: newStatus })
+  //     );
+  //     if (res.meta.requestStatus === "fulfilled") {
+  //       // ✅ Immediately refresh tasks so UI updates without reload
+  //       dispatch(fetchtasks());
+  //     } else {
+  //       showMessage("error","Failed to update task status");
+  //     }
+  //   }
+  // };
+
+
+ const handleDragEnd = async (event) => {
+  const { active, over } = event;
+  if (!over) return;
+
+  const taskId = active.id;
+  const newStatus = over.id;
+
+  const draggedTask = visibleTasks.find(
+    (task) => task.id === parseInt(taskId)
+  );
+
+  if (!draggedTask || draggedTask.status === newStatus) return;
+
+  // ===== PERMISSION CHECK BEFORE API CALL =====
+  const project = projects.find((p) => p.id === draggedTask.projectId);
+
+  const isAllowed =
+    isAdmin ||
+    project?.ownerId === currentUserId ||
+    project?.teamMembers?.some((m) => m.id === currentUserId);
+
+  if (!isAllowed) {
+    showMessage("error", "You don't have permission to update this task");
+    return;
+  }
+
+  try {
+    console.log(newStatus)
+    const res = await dispatch(
+      updateTaskStatus({ taskId, status: newStatus })
     );
 
-    if (draggedTask && draggedTask.status !== newStatus) {
-      const res = await dispatch(
-        updateTaskStatus({ taskId, status: newStatus })
-      );
-      if (res.meta.requestStatus === "fulfilled") {
-        // ✅ Immediately refresh tasks so UI updates without reload
-        dispatch(fetchtasks());
-      } else {
-        message.error("Failed to update task status");
-      }
+    if (res.meta.requestStatus === "fulfilled") {
+      dispatch(fetchtasks()); // ✅ refresh UI
+    } else if (res.meta.requestStatus === "rejected") {
+      // ✅ Show backend error if API rejects
+      const backendError =
+        res.payload?.message || // from rejectWithValue in thunk
+        res.error?.message ||   // fallback error from thunk
+        "Failed to update task status";
+
+      showMessage("error", backendError);
     }
-  };
+  } catch (err) {
+    console.error("Status update error:", err);
+    const backendError =
+      err.response?.data?.message ||
+      err.message ||
+      "Something went wrong while updating task";
+    showMessage("error", backendError);
+  }
+};
+
+
 
   const onSubmit = async (data) => {
     const allowedProjects = isAdmin
@@ -178,7 +260,7 @@ export default function KanbanBoard() {
       (p) => p.id === data.projectId
     );
     if (!isAllowedProject) {
-      return message.error(
+      return showMessage("error",
         "You don't have permission to create a task in this project"
       );
     }
@@ -189,7 +271,7 @@ export default function KanbanBoard() {
         project.teamMembers?.some((m) => m.id === data.assignedTo) ||
         project.ownerId === data.assignedTo;
       if (!isMember) {
-        return message.error(
+        return showMessage("error",
           "You can only assign tasks to members of this project"
         );
       }
@@ -201,6 +283,10 @@ export default function KanbanBoard() {
     formData.append("status", data.status);
     formData.append("projectId", Number(data.projectId));
     formData.append("assignedTo", Number(data.assignedTo));
+    formData.append(
+      "dueDate",
+      dayjs(data.dueDate).format("YYYY-MM-DD") // ✅ send formatted date
+    );
     if (file) {
       formData.append("attachment", file);
     }
@@ -208,17 +294,17 @@ export default function KanbanBoard() {
     try {
       const res = await dispatch(createtask(formData));
       if (res.meta.requestStatus === "fulfilled") {
-        message.success("Task created successfully!");
+        showMessage("success","Task created successfully!")
         setIsModalOpen(false);
         reset();
         setFile(null);
         dispatch(fetchtasks());
       } else {
-        message.error("Failed to create task");
+        showMessage("error","Failed to create task")
       }
     } catch (err) {
       console.error("Create Task Error:", err);
-      message.error("Something went wrong");
+      showMessage("error","Something went wrong")
     }
   };
 
@@ -372,6 +458,25 @@ export default function KanbanBoard() {
               </p>
             )}
           </div>
+          <div>
+            <label>Due Date</label>
+            <Controller
+              name="dueDate"
+              control={control}
+              render={({ field }) => (
+                <DatePicker
+                  {...field}
+                  style={{ width: "100%" }}
+                  format="YYYY-MM-DD"
+                  onChange={(date) => field.onChange(date)}
+                />
+              )}
+            />
+            {errors.dueDate && (
+              <p className="text-red-500 text-sm">{errors.dueDate.message}</p>
+            )}
+          </div>
+
 
           <div>
             <label>Attachment (optional)</label>
@@ -392,6 +497,7 @@ export default function KanbanBoard() {
               key={column.id}
               column={column}
               tasks={visibleTasks.filter((task) => task.status === column.id)}
+              
             />
           ))}
         </DndContext>

@@ -44,7 +44,6 @@ const navigate = useNavigate()
       );
 
       login(response.token)
-      toast.success('Login Successfully')
       navigate('/admin/dashboard')
     } catch (err) {
       

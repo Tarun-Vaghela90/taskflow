@@ -14,10 +14,10 @@ import { toast } from "react-toastify";
 import { ConfigProvider, theme, Button } from "antd";
 import { useTheme } from "./shared/hooks/ThemeContext";
 import Users from "./dashboard/pages/users/Users.jsx";
-
+import socket from "./utils/socket.js";
 function App() {
   const token = localStorage.getItem("Token");
-  const { isDark,isAdmin } = useTheme();
+  const { isDark, isAdmin, showMessage,userId } = useTheme();
 
   const [admin, setAdmin] = useState(false);
   const navigate = useNavigate();
@@ -38,14 +38,30 @@ function App() {
   };
 
   useEffect(() => {
-    if (checkTokenExpiration()) {
-      toast.warning("Token expired. Please login again.");
-      localStorage.removeItem("Token");
-      navigate("/");
-    }
-  }, []);
+  console.log("user from theme", userId);
 
-  
+  if (!userId) return; // wait until userId is available
+
+  const handleNotification = (data) => {
+    console.log("📢 New notification:", data);
+    if (userId === data.userId) {
+      showMessage("Success", data.message);
+    }
+  };
+
+  socket.on("notification", handleNotification);
+
+  if (checkTokenExpiration()) {
+    toast.warning("Token expired. Please login again.");
+    localStorage.removeItem("Token");
+    navigate("/");
+  }
+
+  return () => {
+    socket.off("notification", handleNotification);
+  };
+}, [userId]);
+
 
   return (
     <ConfigProvider
@@ -89,7 +105,10 @@ function App() {
           <Route path="projects/project/:id" element={<Viewproject />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="tasks/:id" element={<ViewTask />} />
-          <Route path="users" element={isAdmin ? <Users />:<Navigate to={'/admin/dashboard'}/>} />
+          <Route
+            path="users"
+            element={isAdmin ? <Users /> : <Navigate to={"/admin/dashboard"} />}
+          />
           {/* <Route path="users/:id" element={<ViewTask />} /> */}
         </Route>
       </Routes>
