@@ -28,12 +28,23 @@ exports.toggleTaskTimer = async (req, res) => {
     const now = new Date();
 
     // Start timer
-    if (action === 'start') {
-      if (task.startedAt) {
-        return res.status(400).json({ message: 'Timer already running for this task' });
+    // Start timer
+if (action === 'start') {
+  if (task.startedAt) {
+    // Already running → just return current timer state
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        taskId: task.id,
+        elapsedTime: task.elapsedTime,
+        startedAt: task.startedAt,
+        stoppedAt: task.stoppedAt,
+        isRunning: true
       }
-      task.startedAt = now;
-    }
+    });
+  }
+  task.startedAt = now;
+}
 
     // Stop timer
     if (action === 'stop') {

@@ -15,8 +15,8 @@ export default function TaskCard({ task }) {
     : undefined;
 
   const [liveSeconds, setLiveSeconds] = useState(task.elapsedTime || 0);
-  const [startedAt, setStartedAt] = useState(null);
-  const [isRunning, setIsRunning] = useState(false);
+  const [startedAt, setStartedAt] = useState(task.startedAt || null);
+  const [isRunning, setIsRunning] = useState(task.isRunning || false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -28,7 +28,29 @@ export default function TaskCard({ task }) {
     (task.User?.id?.toString() === userId.toString() ||
       task.assignedTo?.toString() === userId.toString());
 
-  // Timer effect
+  // Sync timer with backend on mount
+  useEffect(() => {
+    const fetchTimer = async () => {
+      try {
+        const token = localStorage.getItem("Token");
+        const res = await axios.get(
+          `http://localhost:3000/api/v1/tasks/task/${task.id}/timer`,
+          { headers: { Token: token } }
+        );
+
+        const timerData = res.data?.data || {};
+        setLiveSeconds(timerData.elapsedTime || 0);
+        setIsRunning(timerData.isRunning || false);
+        setStartedAt(timerData.startedAt || null);
+      } catch (err) {
+        console.warn("Could not sync timer state", err);
+      }
+    };
+
+    fetchTimer();
+  }, [task.id]);
+
+  // Timer effect (local ticking)
   useEffect(() => {
     let interval;
     if (isRunning && startedAt) {
@@ -53,6 +75,12 @@ export default function TaskCard({ task }) {
 
       const token = localStorage.getItem("Token");
 
+      // Prevent duplicate "start" if already running
+      if (action === "start" && isRunning) {
+        setError("Timer already running");
+        return;
+      }
+
       if (action === "start") {
         setStartedAt(new Date().toISOString());
         setIsRunning(true);
@@ -68,12 +96,16 @@ export default function TaskCard({ task }) {
         { headers: { Token: token } }
       );
 
-      if (action === "stop") {
-        setLiveSeconds(res.data.data.elapsedTime || 0);
-      }
+      const data = res.data?.data || {};
+      setLiveSeconds(data.elapsedTime || 0);
+      setIsRunning(data.isRunning || false);
+      setStartedAt(data.startedAt || null);
     } catch (err) {
       console.error("Failed to toggle timer", err);
-      setError(`Could not ${action} timer`);
+      const msg =
+        err.response?.data?.message || `Could not ${action} timer`;
+      setError(msg);
+      // Rollback to previous state
       setIsRunning(prevRunning);
       setStartedAt(prevStartedAt);
     } finally {
@@ -103,10 +135,10 @@ export default function TaskCard({ task }) {
 
   // Status → background colors
   const statusColors = {
-    TODO: "#d9d9d9",       // Gray
+    TODO: "#d9d9d9", // Gray
     IN_PROGRESS: "#1890ff", // Blue
-    DONE: "#52c41a",        // Green
-    BLOCKED: "#ff4d4f",     // Red
+    DONE: "#52c41a", // Green
+    BLOCKED: "#ff4d4f", // Red
   };
 
   return (
@@ -133,7 +165,6 @@ export default function TaskCard({ task }) {
 
         {/* Info Grid */}
         <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm mb-4">
-          {/* Time only for assigned user */}
           {isAssignedUser && (
             <div className="text-gray-500">
               Time:
@@ -188,7 +219,7 @@ export default function TaskCard({ task }) {
           </p>
         </div>
 
-        {/* Timer Controls — only for assigned user */}
+        {/* Timer Controls */}
         {isAssignedUser && (
           <div className="mt-4 flex justify-start items-center gap-2">
             {!isRunning ? (
